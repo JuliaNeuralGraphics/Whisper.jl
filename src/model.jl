@@ -26,7 +26,6 @@ function (mha::MultiHeadAttention)(
     k = mha.key(isnothing(xa) ? x : xa)
     v = mha.value(isnothing(xa) ? x : xa)
 
-    # TODO reshape mask
     ω, _ = dot_product_attention(q, k, v; mask, nheads=mha.n_head)
     mha.out(ω)
 end
@@ -135,7 +134,7 @@ function (dec::TextDecoder)(x::I, xa::T) where {
         t = block(t, xa; mask)
     end
     t = dec.ln(t)
-    transpose(dec.token_embedding.weight) ⊠ t # Reversed
+    transpose(dec.token_embedding.weight) ⊠ t
 end
 
 struct WHISPER{E, D}

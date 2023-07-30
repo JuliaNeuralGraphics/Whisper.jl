@@ -13,6 +13,7 @@ function prep_audio(
     permutedims((log_spec .+ 4f0) ./ 4f0, (2, 1, 3))
 end
 
+# TODO cache
 function hanning(n::Integer)
     scale = π / Float32(n)
     [sin(scale * k)^2 for k in UnitRange{Float32}(0, n - 1)]
