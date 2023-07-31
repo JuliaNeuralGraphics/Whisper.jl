@@ -1,6 +1,17 @@
+const N_FFT::Int = 400
+const N_MELS::Int = 80
+const HOPSIZE::Int = 160
+
+const SAMPLE_RATE::Int = 16_000
+const CHUNK_LENGTH::Int = 30 # 30 seconds at max.
+
+const N_SAMPLES::Int = CHUNK_LENGTH * SAMPLE_RATE # Maximum samples in 30 seconds.
+const N_FRAMES::Int = N_SAMPLES ÷ HOPSIZE # Max frames in mel spectrogram input.
+
+# TODO pad silence to the right.
 function prep_audio(
     waveform::Matrix{Float32}, sample_rate::Integer;
-    n_fft::Integer = 400, hopsize::Integer = 160, n_mels::Int = 80,
+    n_fft::Integer = N_FFT, hopsize::Integer = HOPSIZE, n_mels::Int = N_MELS,
 )
     freqs = stft(waveform; n_fft, hopsize)
     magnitudes = abs.(freqs[:, 1:(end - 1), :]).^2
@@ -157,7 +168,7 @@ function mel2hz(mels::Float32; htk::Bool = false)
 end
 
 function mel(
-    sample_rate::Float32 = 16000f0; n_fft::Int = 400, n_mels::Int = 80,
+    sample_rate::Float32; n_fft::Int, n_mels::Int,
     fmin::Float32 = 0f0, fmax::Float32 = sample_rate ÷ 2,
 )
     fft_ω = fftfreq(n_fft, sample_rate)[1:201]

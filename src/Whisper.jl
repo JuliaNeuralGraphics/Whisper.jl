@@ -41,14 +41,17 @@ end
 
 """
 TODO
+- save to .srt file
 - multilingual
 - re-encode using ffmpeg:
     ffmpeg -i in.flac -ac 1 -ar 16000 out.flac
+- detect language
+- streaming
 """
 
-function transcribe(
-    file_path::String = "/home/pxl-th/Downloads/out.flac";
-)
+function transcribe(file_path::String)
+    @info "Running on $(Flux.GPU_BACKEND) GPU backend."
+
     device = gpu
     precision = f16
     model = WHISPER("tiny.en") |> precision |> device
@@ -57,36 +60,48 @@ function transcribe(
     ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
     tokenizer = BPE(ranks; special_tokens)
 
+    eot_id = tokenizer.special_tokens["<|endoftext|>"]
+
     waveform, sample_rate::Int = load(file_path)
     @assert size(waveform, 2) == 1 # Mono
-    @assert sample_rate == 16000
-    log_spec = prep_audio(waveform, sample_rate) |> precision |> device
+    @assert sample_rate == SAMPLE_RATE
 
-    lst = [tokenizer("<|startoftranscript|>")] # 0-based idx.
-    enc = model.encoder(log_spec)
+    log_spec = prep_audio(waveform, sample_rate) |> precision
+    content_frames = size(log_spec, 1)
 
-    dec_str = ""
-    for i in 1:100
-        ctx = (Int32.(reshape(vcat(lst...), :, 1)) .+ Int32(1)) |> device # 1-based idx.
-        dec = model.decoder(ctx, enc)
-        idx = argmax(dec[:, end, 1])
-        push!(lst, [idx - 1])
+    all_tokens = Vector{Int64}[]
 
-        dec_str = decode(tokenizer, vcat(lst...))
-        occursin("<|endoftext|>", dec_str) && break
+    seek = 1
+    i = 1
+    while seek < content_frames
+        i == 10 && break
+
+        time_offset = (seek - 1) * HOPSIZE / SAMPLE_RATE
+        segment = log_spec[seek:min(seek + (N_FRAMES - 1), content_frames), :, :]
+
+        lst = [tokenizer("<|startoftranscript|>")] # 0-based idx.
+
+        enc = model.encoder(segment |> device)
+        while true
+            ctx = (Int32.(reshape(vcat(lst...), :, 1)) .+ Int32(1)) |> device # 1-based idx.
+
+            dec = model.decoder(ctx, enc)
+            idx = argmax(dec[:, end, 1])
+            push!(lst, [idx - 1])
+
+            (idx - 1) == eot_id && break
+        end
+        push!(all_tokens, vcat(lst...))
+
+        seek += N_FRAMES
+        i += 1
     end
-    println(dec_str)
+
+    for tokens in all_tokens
+        println(decode(tokenizer, tokens; include_specials=false))
+        println()
+    end
     return
 end
-
-# function mmm()
-#     tokens_file = "./gpt2.tiktoken"
-#     ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
-#     enc = BPE(ranks; special_tokens)
-
-#     @show enc("<|startoftranscript|><|notimestamps|>")
-#     @show decode(enc, enc("<|startoftranscript|>hello"))
-#     return
-# end
 
 end
