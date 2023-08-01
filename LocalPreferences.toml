@@ -1,5 +1,5 @@
 [AMDGPU]
-hard_memory_limit = "80 %"
+hard_memory_limit = "70 %"
 
 [Flux]
 gpu_backend = "AMD"

@@ -191,7 +191,7 @@ function bpe_encode(enc::BPE, x::Base.CodeUnits{UInt8})
     [enc.mergeable_ranks[p] for p in parts]
 end
 
-function decode(enc::BPE, tokens::Vector{Int}; include_specials::Bool = true)
+function decode(enc::BPE, tokens::AbstractVector{Int}; include_specials::Bool = true)
     bytes = UInt8[]
     for t in tokens
         v = get(enc.decoder, t, nothing)
@@ -202,6 +202,11 @@ function decode(enc::BPE, tokens::Vector{Int}; include_specials::Bool = true)
         end
     end
     String(bytes)
+end
+
+function decode(enc::BPE, token::Int)
+    v = get(enc.decoder, token, nothing)
+    v ≡ nothing ? enc.special_decoder[token] : String(v)
 end
 
 # function clean_text(text::String)
