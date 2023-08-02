@@ -146,3 +146,7 @@ Flux.@functor WHISPER
 function WHISPER(; encoder_kwargs, decoder_kwargs)
     WHISPER(AudioEncoder(; encoder_kwargs...), TextDecoder(; decoder_kwargs...))
 end
+
+decoder_ctx_size(m::WHISPER) = size(m.decoder.positional_embedding.weight, 2)
+
+get_backend(m::WHISPER) = get_backend(m.decoder)

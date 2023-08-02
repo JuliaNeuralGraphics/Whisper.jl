@@ -47,10 +47,8 @@ end
 
 """
 TODO
-- save to .srt file
+- check for collapse mode, then increase temperature and re-run on segment
 - multilingual
-- re-encode using ffmpeg:
-    ffmpeg -i in.flac -ac 1 -ar 16000 out.flac
 - detect language
 - streaming
 """
@@ -129,69 +127,77 @@ end
 function transcribe(file_path::String, srt_path::String)
     @info "Running on $(Flux.GPU_BACKEND) GPU backend."
 
-    device = gpu
+    dev = gpu
     precision = f16
-    model = WHISPER("tiny.en") |> precision |> device
+    model = WHISPER("tiny.en") |> precision |> dev
 
     tokens_file = joinpath(pkgdir(Whisper), "data", "gpt2.tiktoken")
     ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
     tokenizer = BPE(ranks; special_tokens)
 
     waveform, sample_rate::Int = load(file_path)
-    @assert size(waveform, 2) == 1 # Mono
-    @assert sample_rate == SAMPLE_RATE
+    if size(waveform, 2) != 1 || sample_rate != SAMPLE_RATE
+        @warn "Running ffmpeg to convert file to a proper format."
+        waveform, sample_rate = convert_audio(file_path)
+    end
 
     log_spec = prep_audio(waveform, sample_rate) |> precision
     content_frames = size(log_spec, 1)
 
-    all_tokens = Vector{Int64}[]
-    eot_id = tokenizer.special_tokens["<|endoftext|>"]
-
-    # TODO decoding options
-    temperature = 0.0f0
-    sample_length = 448 ÷ 2
-    max_context_size = 64
-
     n_frames = cld(content_frames, N_FRAMES)
     bar = get_pb(n_frames, "Transcribing: ")
 
+    all_tokens = Vector{Int64}[]
     seek = 1
-    i = 1
     while seek < content_frames
         segment = log_spec[seek:min(seek + (N_FRAMES - 1), content_frames), :, :]
-
-        lst = [tokenizer("<|startoftranscript|>")] # 0-based idx.
-
-        enc = model.encoder(segment |> device)
-        for i in sample_length
-            lst_start = max(1, length(lst) - max_context_size + 1)
-            lst_view = @view(lst[lst_start:end])
-            ctx = (Int32.(reshape(vcat(lst_view...), :, 1)) .+ Int32(1)) |> device # 1-based idx.
-
-            dec = model.decoder(ctx, enc)
-            # TODO decode, if collapse mode, increase temperature -> repeat whole loop for segment
-            idx = if temperature ≈ 0
-                argmax(dec[:, end, 1])
-            else
-                logits = Float32.(Array(@view(dec[:, end, 1])))
-                p = softmax(logits ./ temperature)
-                rand(Categorical(p))
-            end
-            push!(lst, [idx - 1])
-
-            (idx - 1) == eot_id && break
-        end
-        push!(lst, [eot_id])
-        push!(all_tokens, vcat(lst...))
+        tokens = decode(model, tokenizer, dev(segment))
+        push!(all_tokens, tokens)
 
         seek += N_FRAMES
-        i += 1
         next!(bar)
     end
 
     srts = SRTEntries(tokenizer, all_tokens)
     save(srts, srt_path)
     return
+end
+
+function decode(
+    model::WHISPER, tokenizer::BPE, segment;
+    sample_length::Int = decoder_ctx_size(model) ÷ 2,
+    max_context_size = sample_length,
+    temperature::Float32 = 0f0,
+)
+    eot_id = tokenizer.special_tokens["<|endoftext|>"]
+
+    tokens = Int32[tokenizer("<|startoftranscript|>")...] # 0-based idx.
+    dev = get_backend(model)
+
+    enc = model.encoder(segment)
+    for i in 1:sample_length
+        tokens_start = max(1, length(tokens) - max_context_size + 1)
+        tokens_view = @view(tokens[tokens_start:end])
+        ctx = (reshape(tokens_view, :, 1) .+ Int32(1)) |> dev # 1-based idx.
+
+        dec = model.decoder(ctx, enc)
+        idx = if temperature ≈ 0f0
+            argmax(@view(dec[:, end, 1]))
+        else
+            logits = @view(dec[:, end, 1])
+            eltype(logits) == Float32 || (logits = Float32.(logits);)
+            logits .*= (1f0 / temperature)
+
+            p = softmax(logits) |> cpu
+            rand(Categorical(p))
+        end
+        push!(tokens, idx - 1)
+
+        (idx - 1) == eot_id && break
+    end
+    push!(tokens, eot_id)
+
+    tokens
 end
 
 end

@@ -8,7 +8,14 @@ const CHUNK_LENGTH::Int = 30 # 30 seconds at max.
 const N_SAMPLES::Int = CHUNK_LENGTH * SAMPLE_RATE # Maximum samples in 30 seconds.
 const N_FRAMES::Int = N_SAMPLES ÷ HOPSIZE # Max frames in mel spectrogram input.
 
-# TODO pad silence to the right.
+function convert_audio(input_file::String)
+    mktempdir() do path
+        audio_file = joinpath(path, "whisper-out.flac")
+        run(`ffmpeg -i $input_file -ac 1 -ar 16000 $audio_file`)
+        waveform, sample_rate = load(audio_file)
+    end
+end
+
 function prep_audio(
     waveform::Matrix{Float32}, sample_rate::Integer;
     n_fft::Integer = N_FFT, hopsize::Integer = HOPSIZE, n_mels::Int = N_MELS,
