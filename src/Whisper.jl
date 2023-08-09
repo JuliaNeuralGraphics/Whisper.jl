@@ -6,7 +6,6 @@ import Downloads
 import Pickle
 import Base64
 
-using AMDGPU
 using AbstractFFTs
 using Distributions
 using FFTW
@@ -18,6 +17,12 @@ using Printf
 using ProgressMeter
 using OrderedCollections
 using Statistics
+
+function _cache_dir()
+    cdr = joinpath(homedir(), ".cache", "Whisper.jl")
+    isdir(cdr) || mkdir(cdr)
+    cdr
+end
 
 get_pb(n, desc::String) = Progress(
     n; desc, dt=1, barglyphs=BarGlyphs("[=> ]"), barlen=50, color=:white)
@@ -75,23 +80,33 @@ function SRTEntries(tokenizer::BPE, all_tokens::Vector{Vector{Int64}})
         in_timestamp = false
 
         for (i, token) in enumerate(tokens)
-            (token == sot_id || token == eot_id || token == not_id) && continue
+            token == sot_id && continue
 
-            is_timestamp = token > not_id
+            is_timestamp = token ≥ not_id || (token == eot_id && in_timestamp)
             is_timestamp || continue
 
+            # If we reach the end, but no timestamp.
+            token == eot_id && !is_timestamp && continue
             in_timestamp ⊻= true
 
             if in_timestamp
-                v = decode(tokenizer, token)
-                start_time = parse(Float32, strip(v, ('<', '>', '|')))
+                start_time = if token == not_id
+                    0f0
+                else
+                    v = decode(tokenizer, token)
+                    parse(Float32, strip(v, ('<', '>', '|')))
+                end
                 start_idx = i + 1
             else
                 end_idx = i - 1
                 text_segment = decode(tokenizer, @view(tokens[start_idx:end_idx]))
 
-                v = decode(tokenizer, token)
-                end_time = parse(Float32, strip(v, ('<', '>', '|')))
+                end_time = if token ≤ not_id
+                    30f0
+                else
+                    v = decode(tokenizer, token)
+                    parse(Float32, strip(v, ('<', '>', '|')))
+                end
                 push!(srts, SRTEntry(
                     start_time + time_offset,
                     end_time + time_offset,
@@ -124,25 +139,27 @@ function save(entries::Vector{SRTEntry}, filename::String)
     return
 end
 
-function transcribe(file_path::String, srt_path::String)
-    @info "Running on $(Flux.GPU_BACKEND) GPU backend."
+function transcribe(
+    file_path::String, srt_path::String;
+    dev = cpu, precision = f32,
+)
+    @info "Running on `$dev` device at `$precision` precision."
 
-    dev = gpu
-    precision = f16
-    model = WHISPER("tiny.en") |> precision |> dev
-
-    tokens_file = joinpath(pkgdir(Whisper), "data", "gpt2.tiktoken")
-    ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
-    tokenizer = BPE(ranks; special_tokens)
-
-    waveform, sample_rate::Int = load(file_path)
-    if size(waveform, 2) != 1 || sample_rate != SAMPLE_RATE
-        @warn "Running ffmpeg to convert file to a proper format."
+    if endswith(file_path, ".flac")
+        waveform, sample_rate::Int = load(file_path)
+        if size(waveform, 2) != 1 || sample_rate != SAMPLE_RATE
+            @warn "Running ffmpeg to convert file to a proper format."
+            waveform, sample_rate = convert_audio(file_path)
+        end
+    else
         waveform, sample_rate = convert_audio(file_path)
     end
 
     log_spec = prep_audio(waveform, sample_rate) |> precision
     content_frames = size(log_spec, 1)
+
+    model = WHISPER("tiny.en") |> precision |> dev
+    tokenizer = BPE(; multilingual=false)
 
     n_frames = cld(content_frames, N_FRAMES)
     bar = get_pb(n_frames, "Transcribing: ")
@@ -158,6 +175,7 @@ function transcribe(file_path::String, srt_path::String)
         next!(bar)
     end
 
+    @info "Saving results to: `$srt_path`."
     srts = SRTEntries(tokenizer, all_tokens)
     save(srts, srt_path)
     return
@@ -170,7 +188,6 @@ function decode(
     temperature::Float32 = 0f0,
 )
     eot_id = tokenizer.special_tokens["<|endoftext|>"]
-
     tokens = Int32[tokenizer("<|startoftranscript|>")...] # 0-based idx.
     dev = get_backend(model)
 

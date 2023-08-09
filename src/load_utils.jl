@@ -12,18 +12,15 @@ const _MODELS = Dict{String, String}(
     "large" => "https://openaipublic.azureedge.net/main/whisper/models/81f7c96c852ee8fc832187b0132e569d6c3065a3252ed18e56effd0b6a73e524/large-v2.pt",
 )
 
-function load_state(model_name::String; cache_dir::Union{String, Nothing} = nothing)
+function load_state(model_name::String)
     weights_url = get(_MODELS, model_name, nothing)
     weights_url ≡ nothing && error("""
         Unsupported model name: `$model_name`.
         Supported models: `$(keys(_MODELS))`.
     """)
 
-    if cache_dir ≡ nothing
-        cache_dir = joinpath(homedir(), ".cache", "Whisper.jl")
-        !isdir(cache_dir) && mkdir(cache_dir)
-        @info "Cache directory for weights: $cache_dir."
-    end
+    cache_dir = _cache_dir()
+    @info "Cache directory for weights: $cache_dir."
 
     weights_file = joinpath(cache_dir, model_name * ".pt")
     if !isfile(weights_file)

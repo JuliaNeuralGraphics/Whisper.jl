@@ -143,6 +143,24 @@ function BPE(
     BPE(pattern, mergeable_ranks, decoder, special_tokens, special_decoder)
 end
 
+function BPE(; multilingual::Bool = false)
+    multilingual && error("Multilingual is not yet supported.")
+
+    cache_dir = _cache_dir()
+    tokens_name = multilingual ? "multilingual.tiktoken" : "gpt2.tiktoken"
+    tokens_file = joinpath(cache_dir, tokens_name)
+
+    if !isfile(tokens_file)
+        base_url = "https://raw.githubusercontent.com/openai/whisper/main/whisper/assets/"
+        tokens_url = base_url * tokens_name
+        @info "Downloading tokens file: $tokens_file"
+        Downloads.download(tokens_url, tokens_file)
+    end
+
+    ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
+    BPE(ranks; special_tokens)
+end
+
 function (enc::BPE)(text::String)
     bpe_tokens = Int64[]
 
@@ -208,10 +226,3 @@ function decode(enc::BPE, token::Int)
     v = get(enc.decoder, token, nothing)
     v ≡ nothing ? enc.special_decoder[token] : String(v)
 end
-
-# function clean_text(text::String)
-#     text = lowercase(text)
-#     text = strip(text)
-#     text = replace(text, r"\s+" => " ")
-#     strip(text)
-# end
