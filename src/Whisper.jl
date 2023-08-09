@@ -141,7 +141,8 @@ end
 
 function transcribe(
     file_path::String, srt_path::String;
-    dev = cpu, precision = f32,
+    model_name::String = "tiny.en",
+    dev = gpu, precision = f16,
 )
     @info "Running on `$dev` device at `$precision` precision."
 
@@ -158,7 +159,7 @@ function transcribe(
     log_spec = prep_audio(waveform, sample_rate) |> precision
     content_frames = size(log_spec, 1)
 
-    model = WHISPER("tiny.en") |> precision |> dev
+    model = WHISPER(model_name) |> precision |> dev
     tokenizer = BPE(; multilingual=false)
 
     n_frames = cld(content_frames, N_FRAMES)
