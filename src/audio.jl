@@ -1,5 +1,6 @@
 const N_FFT::Int = 400
 const N_MELS::Int = 80
+const N_MELS_V3::Int = 128
 const HOPSIZE::Int = 160
 
 const SAMPLE_RATE::Int = 16_000
