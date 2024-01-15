@@ -115,7 +115,7 @@ const SPECIALS::Vector{String} = [
 
 function prep_ranks(tokens_file::String)
     ranks = Dict(
-        Base64.base64decode(token) => parse(Int, rank) for (token, rank) in
+        (token=="=" ? UInt8[] : Base64.base64decode(token)) => parse(Int, rank) for (token, rank) in
             (split(line) for line in readlines(tokens_file)))
     n_vocab = length(ranks)
     special_tokens = Dict(zip(SPECIALS, n_vocab:(n_vocab + length(SPECIALS) - 1)))
@@ -144,8 +144,6 @@ function BPE(
 end
 
 function BPE(; multilingual::Bool = false)
-    multilingual && error("Multilingual is not yet supported.")
-
     cache_dir = _cache_dir()
     tokens_name = multilingual ? "multilingual.tiktoken" : "gpt2.tiktoken"
     tokens_file = joinpath(cache_dir, tokens_name)

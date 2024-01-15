@@ -156,11 +156,12 @@ function transcribe(
         waveform, sample_rate = convert_audio(file_path)
     end
 
-    log_spec = prep_audio(waveform, sample_rate) |> precision
+    log_spec = prep_audio(waveform, sample_rate, 
+        n_mels = model_name=="large-v3" ? N_MELS_V3 : N_MELS ) |> precision
     content_frames = size(log_spec, 1)
 
     model = WHISPER(model_name) |> precision |> dev
-    tokenizer = BPE(; multilingual=false)
+    tokenizer = BPE(; multilingual= ! endswith(model_name,".en"))
 
     n_frames = cld(content_frames, N_FRAMES)
     bar = get_pb(n_frames, "Transcribing: ")
