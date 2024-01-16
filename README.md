@@ -47,11 +47,8 @@ julia> values(Whisper.LANGUAGES)
 
 - Supported input file: `.flac` with 1 channel and 16k sample rate.
 - Other input files are converted to it using `ffmpeg` which must be installed on your system and accessible from PATH.
-- Only english models are supported right now.
-- Supported model names: `tiny.en`, `base.en`, `small.en`, `medium.en`.
 
 ## TODO
 
 - Beam search decoder.
-- Multilingual support.
 - Streaming support.
