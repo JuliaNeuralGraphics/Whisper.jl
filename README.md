@@ -27,6 +27,22 @@ julia> Whisper.transcribe(
     model_name="tiny.en", dev=cpu, precision=f32)
 ```
 
+**Multilingual support**
+
+To perform transcribtion from non-English language,
+specify `language` argument and drop `.en` from the model name.
+
+```julia
+julia> Whisper.transcribe(
+    "ukrainian-sample.flac", "./output.srt";
+    model_name="medium", language="ukrainian", dev=cpu, precision=f32)
+```
+
+To see what languages are supported, execute:
+```julia
+julia> values(Whisper.LANGUAGES)
+```
+
 ## Details
 
 - Supported input file: `.flac` with 1 channel and 16k sample rate.
