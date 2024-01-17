@@ -27,15 +27,28 @@ julia> Whisper.transcribe(
     model_name="tiny.en", dev=cpu, precision=f32)
 ```
 
+**Multilingual support**
+
+To perform transcribtion from non-English language,
+specify `language` argument and drop `.en` from the model name.
+
+```julia
+julia> Whisper.transcribe(
+    "ukrainian-sample.flac", "./output.srt";
+    model_name="medium", language="ukrainian", dev=cpu, precision=f32)
+```
+
+To see what languages are supported, execute:
+```julia
+julia> values(Whisper.LANGUAGES)
+```
+
 ## Details
 
 - Supported input file: `.flac` with 1 channel and 16k sample rate.
 - Other input files are converted to it using `ffmpeg` which must be installed on your system and accessible from PATH.
-- Only english models are supported right now.
-- Supported model names: `tiny.en`, `base.en`, `small.en`, `medium.en`.
 
 ## TODO
 
 - Beam search decoder.
-- Multilingual support.
 - Streaming support.
