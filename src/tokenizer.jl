@@ -129,15 +129,15 @@ struct BPE
     decoder::Dict{Int64, Vector{UInt8}}
     special_tokens::Dict{String, Int64}
     special_decoder::Dict{Int64, String}
-    language::String
-    language_idx::Int32
+    language::String # May be empty string if unspecified.
+    language_idx::Int32 # 0 if `language` is unspecified.
 end
 
 function BPE(
     mergeable_ranks::Dict{Vector{UInt8}, Int64};
     special_tokens::Dict{String, Int64},
     pattern::Regex = r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
-    language::String,
+    language::Maybe{String},
 )
     decoder = Dict{Int64, Vector{UInt8}}(
         rank => byte for (byte, rank) in mergeable_ranks)
@@ -145,23 +145,26 @@ function BPE(
         rank => token for (token, rank) in special_tokens)
 
     language_idx::Int32 = 0
-    for (i, (k, v)) in enumerate(LANGUAGES)
-        if v == language
-            language_idx = i
-            break
+    if language ≢ nothing
+        for (i, (k, v)) in enumerate(LANGUAGES)
+            if v == language
+                language_idx = i
+                break
+            end
         end
+        @assert language_idx != 0
+    else
+        language = ""
     end
-    @assert language_idx != 0
 
     BPE(
         pattern, mergeable_ranks, decoder, special_tokens, special_decoder,
         language, language_idx)
 end
 
-function BPE(; language::String)
-    language in values(LANGUAGES) || error("Specified invalid language `$language`.")
-
-    multilingual = language != "english"
+function BPE(; language::Maybe{String}, multilingual::Bool)
+    (language ≡ nothing || language ∈ values(LANGUAGES)) ||
+        error("Specified invalid language `$language`.")
 
     cache_dir = _cache_dir()
     tokens_name = multilingual ? "multilingual.tiktoken" : "gpt2.tiktoken"
