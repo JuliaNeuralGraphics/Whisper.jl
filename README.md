@@ -30,7 +30,7 @@ julia> Whisper.transcribe(
 **Multilingual support**
 
 To perform transcribtion from non-English language,
-specify `language` argument and drop `.en` from the model name.
+specify `language` argument (optional) and drop `.en` from the model name.
 
 ```julia
 julia> Whisper.transcribe(
