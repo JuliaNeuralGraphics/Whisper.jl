@@ -146,7 +146,7 @@ function transcribe(
 )
     multilingual = !endswith(model_name, ".en")
 
-    if (language ≢ nothing && language != "english") && multilingual
+    if (language ≢ nothing && language != "english") && !multilingual
         error("""
             Speicifed language `$language`, but model `$model_name` supports only English.
             Try dropping `.en` part from the model name.
