@@ -207,7 +207,6 @@ function decode(
 
     # If specified, append language & task tokens.
     if !isempty(tokenizer.language)
-        @info "APP"
         push!(tokens, tokens[1] + tokenizer.language_idx)
         push!(tokens, transcribe_id)
     end
