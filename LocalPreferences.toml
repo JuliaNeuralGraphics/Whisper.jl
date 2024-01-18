@@ -1,2 +1,2 @@
 [Flux]
-gpu_backend = "AMD"
+gpu_backend = "AMDGPU"

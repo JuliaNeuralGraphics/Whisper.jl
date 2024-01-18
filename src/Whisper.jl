@@ -52,9 +52,9 @@ end
 
 """
 TODO
-- check for collapse mode, then increase temperature and re-run on segment
-- multilingual
+- support translation
 - detect language
+- check for collapse mode, then increase temperature and re-run on segment
 - streaming
 """
 
@@ -141,26 +141,42 @@ end
 
 function transcribe(
     file_path::String, srt_path::String;
-    model_name::String = "tiny.en",
+    model_name::String = "tiny.en", language::String = "english",
     dev = gpu, precision = f16,
 )
+    if language != "english" && endswith(model_name, ".en")
+        error("""
+            Speicifed language `$language`, but model `$model_name` supports only English.
+            Try dropping `.en` part from the model name.
+            Here's the list of all supported models:
+            $(keys(_MODELS)).
+        """)
+    elseif language == "english" && !endswith(model_name, ".en")
+        error("""
+            For English, use model name that ends with `.en`.
+            Specified name: $model_name.
+            Here's the list of all supported models:
+            $(keys(_MODELS)).
+        """)
+    end
+
     @info "Running on `$dev` device at `$precision` precision."
 
     if endswith(file_path, ".flac")
         waveform, sample_rate::Int = load(file_path)
         if size(waveform, 2) != 1 || sample_rate != SAMPLE_RATE
-            @warn "Running ffmpeg to convert file to a proper format."
             waveform, sample_rate = convert_audio(file_path)
         end
     else
         waveform, sample_rate = convert_audio(file_path)
     end
 
-    log_spec = prep_audio(waveform, sample_rate) |> precision
+    log_spec = prep_audio(waveform, sample_rate,
+        n_mels=model_name == "large-v3" ? N_MELS_V3 : N_MELS) |> precision
     content_frames = size(log_spec, 1)
 
     model = WHISPER(model_name) |> precision |> dev
-    tokenizer = BPE(; multilingual=false)
+    tokenizer = BPE(; language)
 
     n_frames = cld(content_frames, N_FRAMES)
     bar = get_pb(n_frames, "Transcribing: ")
@@ -188,9 +204,17 @@ function decode(
     max_context_size = sample_length,
     temperature::Float32 = 0f0,
 )
-    eot_id = tokenizer.special_tokens["<|endoftext|>"]
-    tokens = Int32[tokenizer("<|startoftranscript|>")...] # 0-based idx.
     dev = get_backend(model)
+
+    eot_id = tokenizer.special_tokens["<|endoftext|>"]
+    transcribe_id = tokenizer.special_tokens["<|transcribe|>"]
+    tokens = Int32[tokenizer("<|startoftranscript|>")...] # 0-based idx.
+    # Append tokenizer's language token so that model knows what language it is.
+    # And transcribtion task.
+    if tokenizer.language != "english"
+        push!(tokens, tokens[1] + tokenizer.language_idx)
+        push!(tokens, transcribe_id)
+    end
 
     enc = model.encoder(segment)
     for i in 1:sample_length

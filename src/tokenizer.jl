@@ -115,7 +115,7 @@ const SPECIALS::Vector{String} = [
 
 function prep_ranks(tokens_file::String)
     ranks = Dict(
-        Base64.base64decode(token) => parse(Int, rank) for (token, rank) in
+        (token=="=" ? UInt8[] : Base64.base64decode(token)) => parse(Int, rank) for (token, rank) in
             (split(line) for line in readlines(tokens_file)))
     n_vocab = length(ranks)
     special_tokens = Dict(zip(SPECIALS, n_vocab:(n_vocab + length(SPECIALS) - 1)))
@@ -129,22 +129,39 @@ struct BPE
     decoder::Dict{Int64, Vector{UInt8}}
     special_tokens::Dict{String, Int64}
     special_decoder::Dict{Int64, String}
+    language::String
+    language_idx::Int32
 end
 
 function BPE(
     mergeable_ranks::Dict{Vector{UInt8}, Int64};
     special_tokens::Dict{String, Int64},
     pattern::Regex = r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
+    language::String,
 )
     decoder = Dict{Int64, Vector{UInt8}}(
         rank => byte for (byte, rank) in mergeable_ranks)
     special_decoder = Dict{Int64, String}(
         rank => token for (token, rank) in special_tokens)
-    BPE(pattern, mergeable_ranks, decoder, special_tokens, special_decoder)
+
+    language_idx::Int32 = 0
+    for (i, (k, v)) in enumerate(LANGUAGES)
+        if v == language
+            language_idx = i
+            break
+        end
+    end
+    @assert language_idx != 0
+
+    BPE(
+        pattern, mergeable_ranks, decoder, special_tokens, special_decoder,
+        language, language_idx)
 end
 
-function BPE(; multilingual::Bool = false)
-    multilingual && error("Multilingual is not yet supported.")
+function BPE(; language::String)
+    language in values(LANGUAGES) || error("Specified invalid language `$language`.")
+
+    multilingual = language != "english"
 
     cache_dir = _cache_dir()
     tokens_name = multilingual ? "multilingual.tiktoken" : "gpt2.tiktoken"
@@ -158,7 +175,7 @@ function BPE(; multilingual::Bool = false)
     end
 
     ranks, special_tokens, n_vocab = prep_ranks(tokens_file)
-    BPE(ranks; special_tokens)
+    BPE(ranks; special_tokens, language)
 end
 
 function (enc::BPE)(text::String)
